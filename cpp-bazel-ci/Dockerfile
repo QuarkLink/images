@@ -38,7 +38,7 @@ RUN bazel version && \
 
 # 创建具有root权限的ciuser用户
 RUN groupadd -g 1000 ciuser && \
-    useradd -u 0 -g ciuser -m -s /bin/bash ciuser
+    useradd -u 1001 -g ciuser -m -s /bin/bash ciuser
 
 # 设置工作目录
 WORKDIR /workspace
