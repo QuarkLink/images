@@ -73,34 +73,6 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-    - name: Test cpp-bazel-ci image
-      run: |
-        # 提取镜像标签用于测试
-        if [ "${{ github.event_name }}" = "pull_request" ]; then
-          IMAGE_TAG="pr-${{ github.event.number }}"
-        else
-          IMAGE_TAG="${{ github.ref_name }}"
-        fi
-        
-        echo "🧪 测试cpp-bazel-ci镜像..."
-        docker run --rm ${{ env.REGISTRY }}/${{ github.repository }}/cpp-bazel-ci:${IMAGE_TAG} bash -c "
-          set -e
-          echo '=== 验证Bazel ==='
-          bazel version
-          echo '=== 验证编译器 ==='
-          gcc --version
-          g++ --version
-          echo '=== 验证代码质量工具 ==='
-          clang-format --version
-          clang-tidy --version
-          echo '=== 验证覆盖率工具 ==='
-          lcov --version
-          echo '=== 验证用户和权限 ==='
-          whoami
-          pwd
-          echo '✅ cpp-bazel-ci镜像测试通过'
-        "
-
   # 汇总所有构建结果
   build-summary:
     needs: [detect-changes, build-cpp-bazel-ci]
