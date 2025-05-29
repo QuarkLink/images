@@ -1,0 +1,73 @@
+# 示例: 在C++项目中使用CI镜像的GitHub Actions配置
+name: C++ CI with Custom Image
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/your-org/images:latest
+      # 如果镜像是私有的，需要添加认证信息
+      # credentials:
+      #   username: ${{ github.actor }}
+      #   password: ${{ secrets.GITHUB_TOKEN }}
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 缓存Bazel构建
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/bazel
+        key: ${{ runner.os }}-bazel-${{ hashFiles('MODULE.bazel', 'WORKSPACE') }}
+        restore-keys: |
+          ${{ runner.os }}-bazel-
+    
+    - name: 代码格式检查
+      run: |
+        find . -name "*.cpp" -o -name "*.cc" -o -name "*.h" -o -name "*.hpp" \
+          | xargs clang-format --dry-run --Werror
+    
+    - name: 静态代码分析
+      run: |
+        # 生成编译数据库
+        bazel run @hedron_compile_commands//:refresh_all
+        # 运行clang-tidy
+        find . -name "*.cpp" -o -name "*.cc" | xargs clang-tidy -p .
+    
+    - name: 构建项目
+      run: |
+        bazel build //...
+    
+    - name: 运行测试
+      run: |
+        bazel test //... --test_output=all
+    
+    - name: 生成覆盖率报告
+      run: |
+        bazel coverage //... --combined_report=lcov
+        genhtml bazel-out/_coverage/_coverage_report.dat -o coverage_html
+    
+    - name: 上传覆盖率报告
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: coverage_html/
+    
+    - name: 检查覆盖率阈值
+      run: |
+        COVERAGE=$(lcov --summary bazel-out/_coverage/_coverage_report.dat 2>&1 | grep "lines......" | awk '{print $2}' | sed 's/%//')
+        echo "当前覆盖率: ${COVERAGE}%"
+        if (( $(echo "$COVERAGE >= 80" | bc -l) )); then
+          echo "✅ 覆盖率检查通过"
+        else
+          echo "❌ 覆盖率低于80%"
+          exit 1
+        fi 
