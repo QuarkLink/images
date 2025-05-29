@@ -38,16 +38,11 @@ RUN bazel version && \
 
 # 创建具有root权限的ciuser用户
 RUN groupadd -g 1000 ciuser && \
-    useradd -u 1000 -g ciuser -G root -m -s /bin/bash ciuser
+    useradd -u 0 -g ciuser -m -s /bin/bash ciuser
 
 # 设置工作目录
 WORKDIR /workspace
 RUN chown ciuser:ciuser /workspace
-
-# 预创建GitHub Actions工作目录
-RUN mkdir -p /__w/_temp /__w/_actions /__w/_tool && \
-    chgrp -R root /__w && \
-    chmod -R g+w /__w
 
 # 切换到ciuser用户
 USER ciuser
