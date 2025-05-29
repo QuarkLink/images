@@ -1,0 +1,262 @@
+# 完整的C++项目CI示例 - 使用cpp-bazel-ci镜像
+name: C++ Project CI with Bazel
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  code-quality:
+    name: 代码质量检查
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/your-org/images/cpp-bazel-ci:latest
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 代码格式检查
+      run: |
+        echo "🎨 检查代码格式..."
+        find . -name "*.cpp" -o -name "*.cc" -o -name "*.h" -o -name "*.hpp" \
+          | xargs clang-format --dry-run --Werror
+        echo "✅ 代码格式检查通过"
+    
+    - name: 静态代码分析
+      run: |
+        echo "🔍 运行静态代码分析..."
+        # 生成编译数据库
+        bazel run @hedron_compile_commands//:refresh_all
+        
+        # 运行clang-tidy分析
+        find . -name "*.cpp" -o -name "*.cc" \
+          | head -10 \
+          | xargs clang-tidy -p . --quiet --warnings-as-errors=*
+        echo "✅ 静态代码分析通过"
+
+  build-and-test:
+    name: 构建和测试
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/your-org/images/cpp-bazel-ci:latest
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 设置Bazel缓存
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/bazel
+        key: ${{ runner.os }}-bazel-${{ hashFiles('MODULE.bazel', 'WORKSPACE', 'MODULE.bazel.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-bazel-
+    
+    - name: 构建所有目标
+      run: |
+        echo "🔨 构建项目..."
+        bazel build //... --verbose_failures
+        echo "✅ 项目构建成功"
+    
+    - name: 运行单元测试
+      run: |
+        echo "🧪 运行单元测试..."
+        bazel test //... \
+          --test_output=errors \
+          --test_summary=detailed \
+          --verbose_failures
+        echo "✅ 单元测试通过"
+    
+    - name: 上传测试结果
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results
+        path: bazel-testlogs/
+
+  coverage:
+    name: 代码覆盖率分析
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/your-org/images/cpp-bazel-ci:latest
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 设置Bazel缓存
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/bazel
+        key: ${{ runner.os }}-bazel-coverage-${{ hashFiles('MODULE.bazel', 'WORKSPACE') }}
+        restore-keys: |
+          ${{ runner.os }}-bazel-coverage-
+          ${{ runner.os }}-bazel-
+    
+    - name: 生成覆盖率报告
+      run: |
+        echo "📊 生成覆盖率报告..."
+        bazel coverage //... \
+          --combined_report=lcov \
+          --coverage_report_generator=@bazel_tools//tools/test/CoverageOutputGenerator/java/com/google/devtools/coverageoutputgenerator:Main
+    
+    - name: 处理覆盖率数据
+      run: |
+        echo "📈 处理覆盖率数据..."
+        
+        # 生成HTML报告
+        genhtml bazel-out/_coverage/_coverage_report.dat \
+          -o coverage_html \
+          --title "项目覆盖率报告" \
+          --show-details
+        
+        # 计算覆盖率百分比
+        COVERAGE=$(lcov --summary bazel-out/_coverage/_coverage_report.dat 2>&1 | \
+          grep "lines......" | awk '{print $2}' | sed 's/%//')
+        
+        echo "当前代码覆盖率: ${COVERAGE}%"
+        echo "COVERAGE_PERCENT=${COVERAGE}" >> $GITHUB_ENV
+        
+        # 检查覆盖率阈值
+        THRESHOLD=80
+        if (( $(echo "$COVERAGE >= $THRESHOLD" | bc -l) )); then
+          echo "✅ 覆盖率检查通过: ${COVERAGE}% >= ${THRESHOLD}%"
+        else
+          echo "❌ 覆盖率不足: ${COVERAGE}% < ${THRESHOLD}%"
+          echo "请增加单元测试以提高代码覆盖率"
+          exit 1
+        fi
+    
+    - name: 上传覆盖率报告
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: coverage_html/
+    
+    - name: 上传到Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        file: ./bazel-out/_coverage/_coverage_report.dat
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+    
+    - name: 覆盖率评论
+      uses: actions/github-script@v7
+      if: github.event_name == 'pull_request'
+      with:
+        script: |
+          const coverage = process.env.COVERAGE_PERCENT;
+          const body = `## 📊 代码覆盖率报告
+          
+          当前覆盖率: **${coverage}%**
+          
+          ${coverage >= 80 ? '✅' : '❌'} 覆盖率${coverage >= 80 ? '达标' : '不足'} (要求: ≥80%)
+          
+          📋 [查看详细报告](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: body
+          });
+
+  security-scan:
+    name: 安全扫描
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/your-org/images/cpp-bazel-ci:latest
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 初始化CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: cpp
+    
+    - name: 构建项目（用于CodeQL分析）
+      run: |
+        echo "🔨 为安全扫描构建项目..."
+        bazel build //... --verbose_failures
+    
+    - name: 执行CodeQL分析
+      uses: github/codeql-action/analyze@v3
+
+  benchmark:
+    name: 性能基准测试
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/your-org/images/cpp-bazel-ci:latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 构建基准测试
+      run: |
+        echo "⚡ 构建基准测试..."
+        bazel build //benchmarks:all --config=release
+    
+    - name: 运行基准测试
+      run: |
+        echo "🏃 运行性能基准测试..."
+        bazel run //benchmarks:main_benchmark \
+          --config=release \
+          -- --benchmark_format=json | tee benchmark_results.json
+    
+    - name: 上传基准测试结果
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results
+        path: benchmark_results.json
+
+  summary:
+    name: 构建总结
+    needs: [code-quality, build-and-test, coverage, security-scan]
+    if: always()
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 生成构建总结
+      run: |
+        echo "## 🚀 CI/CD 构建总结" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| 检查项 | 状态 |" >> $GITHUB_STEP_SUMMARY
+        echo "|--------|------|" >> $GITHUB_STEP_SUMMARY
+        
+        # 代码质量检查状态
+        if [ "${{ needs.code-quality.result }}" = "success" ]; then
+          echo "| 代码质量 | ✅ 通过 |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| 代码质量 | ❌ 失败 |" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # 构建和测试状态
+        if [ "${{ needs.build-and-test.result }}" = "success" ]; then
+          echo "| 构建测试 | ✅ 通过 |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| 构建测试 | ❌ 失败 |" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # 覆盖率分析状态
+        if [ "${{ needs.coverage.result }}" = "success" ]; then
+          echo "| 覆盖率分析 | ✅ 通过 |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| 覆盖率分析 | ❌ 失败 |" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # 安全扫描状态
+        if [ "${{ needs.security-scan.result }}" = "success" ]; then
+          echo "| 安全扫描 | ✅ 通过 |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| 安全扫描 | ❌ 失败 |" >> $GITHUB_STEP_SUMMARY
+        fi 
