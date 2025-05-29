@@ -1,4 +1,4 @@
-FROM ubuntu:24.04
+FROM ubuntu:22.04
 
 # 镜像元数据
 LABEL maintainer="QuarkLink"
@@ -9,25 +9,18 @@ LABEL version="1.0"
 ENV DEBIAN_FRONTEND=noninteractive
 
 # 安装最基本的CI工具
-RUN apt-get update && apt-get install -y \
-    curl \
+RUN apt update && apt install -y --no-install-recommends \
     wget \
-    git \
-    unzip \
-    build-essential \
-    gcc \
-    g++ \
     clang-format \
     clang-tidy \
     lcov \
+    unzip \
+    ca-certificates \
+    git \
+    g++ \
+    make \
     bc \
-    sudo \
-    # 添加一些额外的有用工具
-    vim \
-    tree \
-    htop \
-    python3 \
-    python3-pip \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装Bazel
@@ -51,18 +44,8 @@ RUN groupadd -r ciuser && useradd -r -g ciuser -m -s /bin/bash ciuser \
 WORKDIR /workspace
 RUN chown -R ciuser:ciuser /workspace
 
-# 添加一些有用的别名和环境变量
-RUN echo 'alias ll="ls -la"' >> /home/ciuser/.bashrc && \
-    echo 'alias la="ls -la"' >> /home/ciuser/.bashrc && \
-    echo 'export PATH="/usr/local/bin:$PATH"' >> /home/ciuser/.bashrc
-
 # 切换到非root用户
 USER ciuser
-
-# 设置Git配置（CI环境常用）
-RUN git config --global user.email "ci@example.com" && \
-    git config --global user.name "CI User" && \
-    git config --global init.defaultBranch main
 
 # 默认命令
 CMD ["/bin/bash"] 
