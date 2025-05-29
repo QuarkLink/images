@@ -44,6 +44,11 @@ RUN groupadd -g 1000 ciuser && \
 WORKDIR /workspace
 RUN chown ciuser:ciuser /workspace
 
+# 预创建GitHub Actions工作目录
+RUN mkdir -p /__w/_temp /__w/_actions /__w/_tool && \
+    chgrp -R root /__w && \
+    chmod -R g+w /__w
+
 # 切换到ciuser用户
 USER ciuser
 
