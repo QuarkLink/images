@@ -36,16 +36,16 @@ RUN bazel version && \
     clang-tidy --version && \
     lcov --version
 
-# # 创建非root用户
-# RUN groupadd -r ciuser && useradd -r -g ciuser -m -s /bin/bash ciuser \
-#     && echo 'ciuser ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+# 创建具有root权限的ciuser用户
+RUN groupadd -g 1000 ciuser && \
+    useradd -u 1000 -g ciuser -G root -m -s /bin/bash ciuser
 
-# 设置工作目录并修改权限
+# 设置工作目录
 WORKDIR /workspace
-# RUN chown -R ciuser:ciuser /workspace
+RUN chown ciuser:ciuser /workspace
 
-# # 切换到非root用户
-# USER ciuser
+# 切换到ciuser用户
+USER ciuser
 
 # 默认命令
 CMD ["/bin/bash"] 
