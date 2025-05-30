@@ -18,8 +18,8 @@ RUN apt update && apt install -y --no-install-recommends \
     ca-certificates \
     git \
     g++ \
-    make \
-    bc \
+    curl \
+    gpg \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
