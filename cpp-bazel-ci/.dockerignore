@@ -1,0 +1,26 @@
+# Git相关
+.git
+.gitignore
+.gitattributes
+
+# CI/CD相关
+.github
+
+# 文档
+README.md
+*.md
+
+# IDE相关
+.vscode
+.idea
+*.swp
+*.swo
+
+# 临时文件
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
+
+# 其他镜像文件夹
+../*/ 
